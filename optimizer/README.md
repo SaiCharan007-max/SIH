@@ -1,10 +1,28 @@
-# Optimizer & ML Module
+# Railway Block Planning & Optimization Service (Python)
 
-This directory is reserved for the upcoming Python-based optimization engine and machine learning algorithms for **SIH26027**: *"AI-Powered Automatic Block Planning to Maximize Asset Availability for Train Operations on Indian Railways"*.
+This service is a pure planning microservice that runs **Google OR-Tools CP-SAT** to produce optimized, consolidated daily railway maintenance blocks.
 
-## Future Scope
-- **Optimization Engine**: Mathematical formulation and heuristic/solver-based scheduling (e.g., OR-Tools, Mixed Integer Linear Programming) to optimize maintenance block allocation without disrupting high-priority train paths.
-- **Predictive & ML Models**: Block duration estimation, conflict prediction, and asset degradation patterns.
-- **Integration**: Communication with the Node.js backend via clean service boundaries/APIs or worker tasks.
+## Role & Responsibilities
+- Receives a normalized Planning Snapshot JSON over HTTP `POST /optimize`.
+- Converts timeline to minute-from-midnight integer variables.
+- Models and enforces hard constraints:
+  - Planning window feasibility ($T_{start} \le \text{start} \le \text{end} \le T_{end}$)
+  - Operational train movement conflicts (track-block jobs cannot overlap trains on the same section)
+  - Freight forecast occupancy windows (conservatively modeled as blocked operational windows)
+  - Corridor restrictions (UNAVAILABLE/RESTRICTED intervals)
+  - Crew conflict prevention (a crew cannot perform multiple overlapping jobs)
+  - Resource conflicts (shared machines/equipment capacity limits)
+- Maximizes total priority of scheduled jobs with mild penalties for block duration and lateness.
+- Consolidates overlapping or contiguous compatible departmental jobs into unified maintenance blocks.
+- Returns an Optimized Plan JSON with metrics and unscheduled job reasons.
 
-*Note: As per our incremental implementation roadmap, this module will be implemented in future phases.*
+## Running Locally
+```bash
+pip install -r requirements.txt
+uvicorn app:app --port 8000 --reload
+```
+
+## Running Tests
+```bash
+pytest
+```
