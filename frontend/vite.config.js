@@ -5,11 +5,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: true
+    host: true,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_BACKEND_URL || 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: 'node',
     globals: true,
-    setupFiles: './src/tests/setup.js'
-  }
+    setupFiles: './src/tests/setup.js',
+  },
 });

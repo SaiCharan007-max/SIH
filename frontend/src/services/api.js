@@ -2,13 +2,20 @@
  * Centralized API Service for SIH26027 Railway Maintenance Planning System
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  '/api';
 
 /**
- * Generic request helper with robust error handling.
+ * Generic request helper with robust error handling and response extraction.
  */
 async function request(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Normalize endpoint to prevent double slashes
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const url = `${cleanBase}${cleanEndpoint}`;
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -22,8 +29,12 @@ async function request(endpoint, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const errorMsg = data?.error?.message || data?.message || `HTTP ${response.status}: ${response.statusText}`;
-      const err = new Error(errorMsg);
+      const errorMsg =
+        data?.error?.message ||
+        data?.error ||
+        data?.message ||
+        `HTTP ${response.status}: ${response.statusText}`;
+      const err = new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
       err.status = response.status;
       err.data = data;
       throw err;
@@ -32,7 +43,9 @@ async function request(endpoint, options = {}) {
     return data;
   } catch (error) {
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('Unable to connect to backend planning service. Ensure Node backend is running on port 5000.');
+      throw new Error(
+        'Unable to connect to backend planning service. Ensure Node backend is running.'
+      );
     }
     throw error;
   }
@@ -46,7 +59,7 @@ export const getMaintenanceJobs = async (params = {}) => {
   if (params.status) query.append('status', params.status);
   const qs = query.toString() ? `?${query.toString()}` : '';
   const res = await request(`/maintenance/jobs${qs}`);
-  return res.data || [];
+  return Array.isArray(res.data) ? res.data : (res.data?.jobs || []);
 };
 
 export const getMaintenancePriorities = async (params = {}) => {
@@ -55,29 +68,30 @@ export const getMaintenancePriorities = async (params = {}) => {
   if (params.reference_date) query.append('reference_date', params.reference_date);
   const qs = query.toString() ? `?${query.toString()}` : '';
   const res = await request(`/maintenance/priorities${qs}`);
-  return res.data || [];
+  // Backend returns: { success: true, data: { reference_date, total_jobs, jobs: [...] } }
+  return res.data?.jobs || (Array.isArray(res.data) ? res.data : []);
 };
 
 // 2. Railway Infrastructure Network
 export const getStations = async () => {
   const res = await request('/stations');
-  return res.data || [];
+  return Array.isArray(res.data) ? res.data : [];
 };
 
 export const getSections = async () => {
   const res = await request('/sections');
-  return res.data || [];
+  return Array.isArray(res.data) ? res.data : [];
 };
 
 export const getAssets = async () => {
   const res = await request('/assets');
-  return res.data || [];
+  return Array.isArray(res.data) ? res.data : [];
 };
 
 // 3. Train Operations
 export const getTrainMovements = async (date = '2026-09-10') => {
   const res = await request(`/train-movements?date=${date}`);
-  return res.data || [];
+  return Array.isArray(res.data) ? res.data : [];
 };
 
 // 4. Block Planning & Optimization
@@ -96,15 +110,17 @@ export const generatePlan = async ({ plan_date, start_time = '06:00', end_time =
 export const getPlanningRuns = async (params = {}) => {
   const query = new URLSearchParams();
   if (params.plan_date) query.append('plan_date', params.plan_date);
+  if (params.status) query.append('status', params.status);
   if (params.limit) query.append('limit', params.limit);
   const qs = query.toString() ? `?${query.toString()}` : '';
   const res = await request(`/planning/runs${qs}`);
-  return res.data?.runs || [];
+  return res.data?.runs || (Array.isArray(res.data) ? res.data : []);
 };
 
 export const getPlanningRun = async (runId) => {
   const res = await request(`/planning/runs/${runId}`);
-  return res.data;
+  // Backend returns: { success: true, data: { run: { ...details, blocks: [...] } } }
+  return res.data?.run || res.data;
 };
 
 // 5. Dynamic Replanning & Disruption Recovery
@@ -122,4 +138,29 @@ export const replan = async ({ plan_date, event }) => {
 export const comparePlanningRuns = async (runId, otherRunId) => {
   const res = await request(`/planning/runs/${runId}/compare/${otherRunId}`);
   return res.data;
+};
+
+// 6. Aggregate Dashboard Data
+export const getDashboardData = async (planDate = '2026-09-10') => {
+  const [jobs, priorities, runs] = await Promise.all([
+    getMaintenanceJobs(),
+    getMaintenancePriorities({ reference_date: planDate }),
+    getPlanningRuns({ plan_date: planDate })
+  ]);
+
+  let latestRunDetails = null;
+  if (runs.length > 0) {
+    try {
+      latestRunDetails = await getPlanningRun(runs[0].id);
+    } catch {
+      latestRunDetails = null;
+    }
+  }
+
+  return {
+    jobs,
+    priorities,
+    runs,
+    latestRunDetails,
+  };
 };
