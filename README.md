@@ -50,18 +50,25 @@ This prototype provides an end-to-end framework to demonstrate:
 
 We are developing this system **incrementally**.
 
-- **Current Status (Phase 1: Foundation & Domain Model Skeleton)**:
-  - Repository structure initialized.
-  - Node.js + Express backend foundation created using ES Modules.
-  - Basic dependencies configured (`express`, `dotenv`, `cors`, `pg`, `nodemon`).
-  - Core `/api/health` monitoring endpoint implemented and verified.
-  - PostgreSQL connection module configured via environment variables.
-  - Initial conceptual domain model specified in [`docs/domain-model.md`](docs/domain-model.md).
+- **Current Status**:
+  - **Phase 1: Foundation & Domain Model Skeleton**:
+    - Repository structure initialized with ES Modules.
+    - PostgreSQL connection pool configured via environment variables.
+    - Health monitoring endpoint at `GET /api/health`.
+  - **Phase 2: Railway Infrastructure Domain**:
+    - PostgreSQL schema for `stations`, `railway_sections`, and `assets`.
+    - Migration system with transaction-safe `.sql` scripts.
+    - Fictional railway network seed data.
+  - **Phase 3: Maintenance Management Domain**:
+    - Schema for `crews`, `maintenance_jobs`, `maintenance_job_assignments`, and `maintenance_job_resources`.
+    - Representative maintenance jobs and crews across Engineering, Traction Distribution, and S&T.
+    - Modular 4-tier backend architecture: Routes -> Controllers -> Services -> Repositories.
+    - Maintenance job CRUD APIs: `POST /api/maintenance/jobs`, `GET /api/maintenance/jobs` (with query filters), `GET /api/maintenance/jobs/:id`, `PATCH /api/maintenance/jobs/:id`.
+    - Automated test suites for database invariants and API functionality.
 - **Upcoming Phases**:
-  - Phase 2: Relational database schema design and migrations (PostgreSQL).
-  - Phase 3: Network and timetable data ingestion services.
-  - Phase 4: Python optimization module integration.
-  - Phase 5: Interactive React frontend dashboard.
+  - Phase 4: Timetable and Train Movements ingestion.
+  - Phase 5: Python optimization engine integration (Block planning & conflict detection).
+  - Phase 6: Interactive React frontend dashboard.
 
 ---
 
@@ -127,6 +134,21 @@ cp .env.example .env
 
 Configure your `PORT` and `DATABASE_URL` as needed in `.env`.
 
+### Database Migrations, Seeding & Testing
+```bash
+# Run pending PostgreSQL migrations
+npm run migrate
+
+# Seed development network and maintenance data
+npm run seed
+
+# Run infrastructure database schema verification
+npm run verify-db
+
+# Run maintenance management domain verification suite
+npm run verify-maintenance
+```
+
 ### Running the Backend
 
 - **Development Mode** (with hot-reloading via `nodemon`):
@@ -150,3 +172,11 @@ Configure your `PORT` and `DATABASE_URL` as needed in `.env`.
     "service": "railway-maintenance-planner"
   }
   ```
+
+### Maintenance Job API Endpoints
+
+- `POST /api/maintenance/jobs` - Create a maintenance job
+- `GET /api/maintenance/jobs` - List jobs with optional query filters (`department`, `section_id`, `asset_id`, `status`, `criticality`, `urgency`)
+- `GET /api/maintenance/jobs/:id` - Fetch detailed job with crew assignments and resource requirements
+- `PATCH /api/maintenance/jobs/:id` - Update status, criticality, urgency, duration, or schedule
+

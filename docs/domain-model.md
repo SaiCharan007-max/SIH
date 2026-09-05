@@ -248,3 +248,117 @@ The physical network foundation is realized in PostgreSQL through three core nor
 - **Why JSONB Metadata is Used**:
   Asset attributes vary widely across departments (e.g., OHE requires `tension_length_m` and `voltage_kv`, while Track requires `rail_weight_kg_m` and `sleeper_type`). Using a structured `JSONB` column provides typed flexibility for prototype attributes without requiring constant schema alter operations or sparse tables.
 
+---
+
+## 5. Maintenance Domain
+
+The maintenance management subsystem captures all incoming maintenance demands across the network prior to temporal block allocation.
+
+### 5.1 ASCII Entity-Relationship Diagram
+
+```
++-------------------------------------------------------------+
+|                            crews                            |
+|-------------------------------------------------------------|
+| PK  id           UUID                                       |
+| UQ  crew_code    VARCHAR(64)                                |
+|     department   department_type (ENUM)                     |
+|     name         VARCHAR(255)                               |
+|     capacity     INTEGER        CHECK (> 0)                 |
+|     active       BOOLEAN                                    |
+|     created_at   TIMESTAMPTZ                                |
+|     updated_at   TIMESTAMPTZ                                |
++-------------------------------------------------------------+
+         | 1
+         |
+         | crew_id (ON DELETE RESTRICT)
+         v ∞
++-------------------------------------------------------------+
+|                maintenance_job_assignments                  |
+|-------------------------------------------------------------|
+| PK  id           UUID                                       |
+| FK  job_id       UUID NOT NULL                              |
+| FK  crew_id      UUID NOT NULL                              |
+|     assigned_at  TIMESTAMPTZ                                |
+|     released_at  TIMESTAMPTZ NULL                           |
+|     is_primary   BOOLEAN                                    |
+|     created_at   TIMESTAMPTZ                                |
+|     CONSTRAINT   CHECK (released_at >= assigned_at)         |
++-------------------------------------------------------------+
+         ^ ∞
+         |
+         | job_id (ON DELETE RESTRICT)
+         | 1
++-------------------------------------------------------------+       1      +--------------------+
+|                      maintenance_jobs                       |------------->|  railway_sections  |
+|-------------------------------------------------------------|  section_id  +--------------------+
+| PK  id                          UUID                        |
+| UQ  job_code                    VARCHAR(64)                 |       1      +--------------------+
+|     department                  department_type (ENUM)      |------------->|       assets       |
+| FK  asset_id                    UUID NOT NULL               |   asset_id   +--------------------+
+| FK  section_id                  UUID NOT NULL               |
+|     work_type                   maintenance_work_type (ENUM)|
+|     description                 TEXT                        |
+|     estimated_duration_minutes  INTEGER CHECK (> 0)         |
+|     criticality                 INTEGER CHECK (1..10)       |
+|     urgency                     INTEGER CHECK (1..10)       |
+|     overdue_days                INTEGER CHECK (>= 0)        |
+|     requested_at                TIMESTAMPTZ                 |
+|     deadline                    TIMESTAMPTZ NULL            |
+|     status                      job_status (ENUM)           |
+|     requires_track_block        BOOLEAN                     |
+|     requires_power_shutdown     BOOLEAN                     |
+|     requires_signal_shutdown    BOOLEAN                     |
+|     planned_start               TIMESTAMPTZ NULL            |
+|     planned_end                 TIMESTAMPTZ NULL            |
+|     actual_start                TIMESTAMPTZ NULL            |
+|     actual_end                  TIMESTAMPTZ NULL            |
+|     created_at                  TIMESTAMPTZ                 |
+|     updated_at                  TIMESTAMPTZ                 |
++-------------------------------------------------------------+
+         | 1
+         |
+         | job_id (ON DELETE RESTRICT)
+         v ∞
++-------------------------------------------------------------+
+|                  maintenance_job_resources                  |
+|-------------------------------------------------------------|
+| PK  id             UUID                                     |
+| FK  job_id         UUID NOT NULL                            |
+|     resource_type  VARCHAR(64)                              |
+|     resource_name  VARCHAR(255)                             |
+|     quantity       INTEGER CHECK (> 0)                      |
+|     created_at     TIMESTAMPTZ                              |
++-------------------------------------------------------------+
+```
+
+### 5.2 Key Concepts and Architectural Rationales
+
+- **Why Maintenance Jobs are Central**:
+  The `maintenance_job` represents the actionable demand unit in railway infrastructure maintenance. Before an automated system can answer *"When should line capacity be blocked?"*, it must first model *"What work needs to be done, where, for how long, and with what resources?"*.
+- **Relationship: Job → Asset → Railway Section**:
+  Every job directly specifies both the target physical `asset_id` and the hosting `section_id`. This explicit link enables:
+  1. Section-level spatial aggregation: grouping multiple jobs from different departments located on the same section into a single unified corridor block.
+  2. Redundancy avoidance: ensuring maintenance history remains pinned to the physical asset even if re-inspected multiple times.
+- **The Three Departments**:
+  - `ENGINEERING`: Track inspection, rail replacement, sleeper renewal, turnout overhaul.
+  - `TRACTION_DISTRIBUTION`: Overhead catenary inspections, insulator renewal, traction substations.
+  - `SIGNAL_TELECOM`: Track circuits, point machines, signal heads, interlocking gear.
+- **Crews and Separate Assignment Table (`maintenance_job_assignments`)**:
+  Crews represent the workforce and machinery capable of executing work. By isolating assignments into a join table rather than embedding a single `crew_id` in `maintenance_jobs`, the architecture naturally supports multi-crew assignments, assignment history, crew rotations, and handovers without data loss.
+- **Lightweight Resource Requirements (`maintenance_job_resources`)**:
+  Jobs require specialized machinery (e.g., USFD rail tester, Abrasive Rail Cutter, OHE Tower Wagon) or consumable materials. The `maintenance_job_resources` table explicitly tracks these prerequisites to allow future scheduling algorithms to perform resource-constrained project scheduling.
+- **Criticality vs. Urgency**:
+  - **Criticality (1–10)**: An intrinsic property of the asset/work reflecting the operational severity and safety risk if the component fails (e.g., main-line turnout = 9–10; yard siding track = 3).
+  - **Urgency (1–10)**: A temporal and wear-based pressure reflecting how soon the work must be completed (e.g., an emergent rail fracture = 10; routine annual inspection with ample margin = 2).
+  - Together with `overdue_days`, these metrics serve as the primary inputs for future AI/heuristic prioritization.
+- **Deadlines and Time Windows**:
+  Jobs define `requested_at` and `deadline`. Initial planning fields (`planned_start`, `planned_end`) and execution metrics (`actual_start`, `actual_end`) are maintained with strict database invariant constraints preventing temporal contradictions.
+- **Block & Disconnection Requirements**:
+  Jobs explicitly declare infrastructure access flags:
+  - `requires_track_block`: requires physical exclusion of trains from the track.
+  - `requires_power_shutdown`: requires 25kV traction de-energization and earthing.
+  - `requires_signal_shutdown`: requires disconnection of signaling interlocking circuits.
+  These flags allow the future optimizer to cross-match and co-schedule jobs requiring identical shutdown windows.
+
+
