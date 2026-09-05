@@ -6,7 +6,10 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate": "node src/database/migrate.js",
+    "seed": "node src/database/seed.js",
+    "verify-db": "node src/scripts/verify-db.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

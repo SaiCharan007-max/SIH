@@ -152,3 +152,99 @@ In standard passenger-facing applications, railway networks are often oversimpli
 | **Maintenance Block** | staffed by | **Crew** | Mobilizes necessary personnel and machinery |
 | **Train Movement** | occupies | **Railway Section** | Traverses section within a timetabled time window |
 | **Train Movement** | belongs to | **Train** | Specific instance of a scheduled train service |
+
+---
+
+## 4. Database Model (Railway Infrastructure Schema)
+
+The physical network foundation is realized in PostgreSQL through three core normalized tables: `stations`, `railway_sections`, and `assets`.
+
+### 4.1 ASCII Entity-Relationship Diagram
+
+```
++-------------------------------------------------------------+
+|                          stations                           |
+|-------------------------------------------------------------|
+| PK  id           UUID                                       |
+| UQ  code         VARCHAR(32)                                |
+|     name         VARCHAR(255)                               |
+|     latitude     NUMERIC(10, 6)                             |
+|     longitude    NUMERIC(10, 6)                             |
+|     created_at   TIMESTAMPTZ                                |
+|     updated_at   TIMESTAMPTZ                                |
++-------------------------------------------------------------+
+         |                                           |
+         | 1                                         | 1
+         |                                           |
+         | from_station_id                           | to_station_id
+         | (ON DELETE RESTRICT)                      | (ON DELETE RESTRICT)
+         v                                           v
++-------------------------------------------------------------+
+|                      railway_sections                       |
+|-------------------------------------------------------------|
+| PK  id               UUID                                   |
+| UQ  section_code     VARCHAR(64)                            |
+|     name             VARCHAR(255)                           |
+| FK  from_station_id  UUID NOT NULL                          |
+| FK  to_station_id    UUID NOT NULL                          |
+|     length_km        NUMERIC(8, 2)  CHECK (> 0)             |
+|     track_count      INTEGER        CHECK (> 0)             |
+|     electrified      BOOLEAN                                |
+|     created_at       TIMESTAMPTZ                            |
+|     updated_at       TIMESTAMPTZ                            |
+|     CONSTRAINT       CHECK (from_station_id <> to_station_id)|
++-------------------------------------------------------------+
+                               | 1
+                               |
+                               | section_id (ON DELETE RESTRICT)
+                               v ∞
++-------------------------------------------------------------+
+|                           assets                            |
+|-------------------------------------------------------------|
+| PK  id           UUID                                       |
+| UQ  asset_code   VARCHAR(64)                                |
+|     asset_type   VARCHAR(64)                                |
+|     name         VARCHAR(255)                               |
+| FK  section_id   UUID NOT NULL                              |
+|     department   department_type (ENUM)                     |
+|     criticality  INTEGER CHECK (1 <= criticality <= 10)     |
+|     status       asset_status (ENUM)                        |
+|     metadata     JSONB                                      |
+|     created_at   TIMESTAMPTZ                                |
+|     updated_at   TIMESTAMPTZ                                |
++-------------------------------------------------------------+
+```
+
+### 4.2 Foreign-Key Directions and Cardinalities
+
+1. **`railway_sections.from_station_id` → `stations.id` (Many-to-One)**:
+   - Identifies the originating station of the section.
+   - Mandatory reference (`NOT NULL`).
+   - Uses `ON DELETE RESTRICT` to safeguard against accidental station removal cascading into the loss of topological line connectivity.
+2. **`railway_sections.to_station_id` → `stations.id` (Many-to-One)**:
+   - Identifies the terminating station of the section.
+   - Mandatory reference (`NOT NULL`).
+   - Enforces `CHECK (from_station_id <> to_station_id)` to prevent self-looping sections.
+3. **`assets.section_id` → `railway_sections.id` (Many-to-One)**:
+   - Associates every physical asset directly with the railway section it occupies.
+   - Uses `ON DELETE RESTRICT` to ensure assets cannot be orphaned.
+
+### 4.3 Key Design Rationales for SIH26027
+
+- **Why Stations Exist**:
+  Stations represent fixed operational nodes where lines originate, terminate, diverge, or cross. They are critical boundaries for train regulation, stabling, siding, and crew/machine mobilization.
+- **Why Railway Sections Exist & Are the Core Planning Unit**:
+  In train operations, a block request cannot be granted to an isolated point or station; it blocks physical movement across a track segment. Modeling the network directly as **sections** allows the block optimizer to compute track occupancy, evaluate alternate routing, and restrict traffic during maintenance intervals without corrupting the timetable graph.
+- **Why Assets Belong to Sections**:
+  Maintenance works (e.g. tamping, rail replacement, wire renewal) are performed on physical assets situated along specific track segments. By associating assets with sections, the planning engine can determine exactly which section must be blocked when an asset requires servicing, and conversely which other assets within the same section can be serviced concurrently ("shadow maintenance").
+- **How the Three Departments Are Represented**:
+  The schema uses a dedicated PostgreSQL enum `department_type`:
+  - `ENGINEERING`: Track, turnouts, sleepers, ballast, bridges.
+  - `TRACTION_DISTRIBUTION`: Overhead Equipment (OHE), contact wires, catenary, sub-stations.
+  - `SIGNAL_TELECOM`: Signals, track circuits, axle counters, point machines.
+  This allows the system to aggregate maintenance requests by department, detect multi-department synergy opportunities, and schedule integrated corridor blocks.
+- **Why Assets Have Criticality (1–10)**:
+  Criticality quantifies the operational and safety impact of an asset's failure. A main-line turnout or automatic starter signal (criticality 9–10) directly halts corridor throughput upon failure, demanding strict block prioritization over low-criticality yard sidings (criticality 1–3).
+- **Why JSONB Metadata is Used**:
+  Asset attributes vary widely across departments (e.g., OHE requires `tension_length_m` and `voltage_kv`, while Track requires `rail_weight_kg_m` and `sleeper_type`). Using a structured `JSONB` column provides typed flexibility for prototype attributes without requiring constant schema alter operations or sparse tables.
+
