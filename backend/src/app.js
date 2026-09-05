@@ -8,6 +8,7 @@ import trainRouteRouter from './routes/trainRoute.routes.js';
 import trainMovementRouter from './routes/trainMovement.routes.js';
 import freightForecastRouter from './routes/freightForecast.routes.js';
 import corridorRouter from './routes/corridor.routes.js';
+import priorityRouter from './routes/priority.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -20,6 +21,7 @@ app.use(express.json());
 // API Routes
 app.use('/api/health', healthRouter);
 app.use('/api/maintenance/jobs', maintenanceJobRouter);
+app.use('/api/maintenance/priorities', priorityRouter);
 app.use('/api/trains', trainRouter);
 app.use('/api/train-routes', trainRouteRouter);
 app.use('/api/train-movements', trainMovementRouter);

@@ -65,10 +65,20 @@ We are developing this system **incrementally**.
     - Modular 4-tier backend architecture: Routes -> Controllers -> Services -> Repositories.
     - Maintenance job CRUD APIs: `POST /api/maintenance/jobs`, `GET /api/maintenance/jobs` (with query filters), `GET /api/maintenance/jobs/:id`, `PATCH /api/maintenance/jobs/:id`.
     - Automated test suites for database invariants and API functionality.
+  - **Phase 4: Train Operations & Corridor Domain**:
+    - Schema for `trains`, `train_routes`, `train_movements`, `freight_forecasts`, and `corridor_availability`.
+    - Train movement tracking through railway sections with scheduled and actual timestamps.
+    - Free corridor window calculation engine merging train occupancies and operational restrictions.
+    - Operations APIs: `/api/trains`, `/api/train-routes`, `/api/train-movements`, `/api/freight-forecasts`, `/api/corridor/availability`.
+  - **Phase 5: Maintenance Priority Engine**:
+    - Explainable, deterministic weighted scoring model ranking maintenance jobs on a 0–100 scale.
+    - Configurable weights and normalization across criticality, urgency, overdue days, deadline proximity, and asset status risk.
+    - Priority classification (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and deterministic tie-breaking.
+    - Priority ranking API: `GET /api/maintenance/priorities` with query filters and reference date simulation.
+    - Comprehensive unit and scenario verification suite.
 - **Upcoming Phases**:
-  - Phase 4: Timetable and Train Movements ingestion.
-  - Phase 5: Python optimization engine integration (Block planning & conflict detection).
-  - Phase 6: Interactive React frontend dashboard.
+  - Phase 6: Python constraint-based optimization engine (Block planning & conflict detection).
+  - Phase 7: Interactive React frontend dashboard.
 
 ---
 
@@ -150,6 +160,9 @@ npm run verify-maintenance
 
 # Run train operations & corridor availability verification suite
 npm run verify-operations
+
+# Run maintenance priority engine verification suite
+npm run verify-priority
 ```
 
 ### Running the Backend
@@ -178,11 +191,12 @@ npm run verify-operations
 
 ### API Endpoints Overview
 
-#### Maintenance Management
+#### Maintenance Management & Prioritization
 - `POST /api/maintenance/jobs` - Create a maintenance job
 - `GET /api/maintenance/jobs` - List jobs with optional query filters (`department`, `section_id`, `asset_id`, `status`, `criticality`, `urgency`)
 - `GET /api/maintenance/jobs/:id` - Fetch detailed job with crew assignments and resource requirements
 - `PATCH /api/maintenance/jobs/:id` - Update status, criticality, urgency, duration, or schedule
+- `GET /api/maintenance/priorities` - Calculate explainable priority ranking for plannable maintenance jobs (filters: `department`, `section_id`, `priority_level`, `reference_date`)
 
 #### Train Operations & Corridor
 - `POST /api/trains` - Register a train service
