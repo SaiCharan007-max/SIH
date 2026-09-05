@@ -705,8 +705,375 @@ export const seedJobs = async (client, sectionMap, assetMap, crewMap) => {
   }
 };
 
+export const seedTrainsData = [
+  {
+    train_number: 'TRN-12001',
+    name: 'Alpha-Epsilon Shatabdi Express',
+    train_type: 'SUPERFAST',
+    priority: 'HIGH',
+    source_station_code: 'FIC-STN-A',
+    destination_station_code: 'FIC-STN-E'
+  },
+  {
+    train_number: 'TRN-12002',
+    name: 'Epsilon-Alpha Shatabdi Return',
+    train_type: 'SUPERFAST',
+    priority: 'HIGH',
+    source_station_code: 'FIC-STN-E',
+    destination_station_code: 'FIC-STN-A'
+  },
+  {
+    train_number: 'TRN-22435',
+    name: 'Vande Bharat Express',
+    train_type: 'SUPERFAST',
+    priority: 'CRITICAL',
+    source_station_code: 'FIC-STN-A',
+    destination_station_code: 'FIC-STN-D'
+  },
+  {
+    train_number: 'TRN-22436',
+    name: 'Vande Bharat Return',
+    train_type: 'SUPERFAST',
+    priority: 'CRITICAL',
+    source_station_code: 'FIC-STN-D',
+    destination_station_code: 'FIC-STN-A'
+  },
+  {
+    train_number: 'TRN-14055',
+    name: 'Brahmaputra Mail',
+    train_type: 'EXPRESS',
+    priority: 'NORMAL',
+    source_station_code: 'FIC-STN-A',
+    destination_station_code: 'FIC-STN-C'
+  },
+  {
+    train_number: 'TRN-14056',
+    name: 'Brahmaputra Mail Return',
+    train_type: 'EXPRESS',
+    priority: 'NORMAL',
+    source_station_code: 'FIC-STN-C',
+    destination_station_code: 'FIC-STN-A'
+  },
+  {
+    train_number: 'TRN-54311',
+    name: 'Alpha-Delta Passenger',
+    train_type: 'PASSENGER',
+    priority: 'LOW',
+    source_station_code: 'FIC-STN-A',
+    destination_station_code: 'FIC-STN-D'
+  },
+  {
+    train_number: 'TRN-54312',
+    name: 'Delta-Alpha Passenger',
+    train_type: 'PASSENGER',
+    priority: 'LOW',
+    source_station_code: 'FIC-STN-D',
+    destination_station_code: 'FIC-STN-A'
+  },
+  {
+    train_number: 'TRN-64501',
+    name: 'Beta-Gamma Suburban Commuter',
+    train_type: 'PASSENGER',
+    priority: 'NORMAL',
+    source_station_code: 'FIC-STN-B',
+    destination_station_code: 'FIC-STN-C'
+  },
+  {
+    train_number: 'TRN-BOXN-01',
+    name: 'Coal Heavy Freight Rake 88A',
+    train_type: 'FREIGHT',
+    priority: 'LOW',
+    source_station_code: 'FIC-STN-D',
+    destination_station_code: 'FIC-STN-A'
+  },
+  {
+    train_number: 'TRN-BCN-02',
+    name: 'Foodgrain Bulk Freight 42B',
+    train_type: 'FREIGHT',
+    priority: 'LOW',
+    source_station_code: 'FIC-STN-A',
+    destination_station_code: 'FIC-STN-E'
+  }
+];
+
+export const seedRoutesData = [
+  { train_number: 'TRN-22435', route_name: 'Alpha to Delta Morning Run', service_date: '2026-09-10' },
+  { train_number: 'TRN-12001', route_name: 'Alpha to Epsilon Shatabdi Run', service_date: '2026-09-10' },
+  { train_number: 'TRN-14055', route_name: 'Alpha to Gamma Express Run', service_date: '2026-09-10' },
+  { train_number: 'TRN-54311', route_name: 'Alpha to Delta Passenger Run', service_date: '2026-09-10' },
+  { train_number: 'TRN-BCN-02', route_name: 'Alpha to Epsilon Freight Run', service_date: '2026-09-10' },
+  { train_number: 'TRN-12002', route_name: 'Epsilon to Alpha Afternoon Shatabdi', service_date: '2026-09-10' },
+  { train_number: 'TRN-64501', route_name: 'Beta to Gamma Afternoon Commuter', service_date: '2026-09-10' },
+  { train_number: 'TRN-BOXN-01', route_name: 'Delta to Alpha Coal Run', service_date: '2026-09-10' }
+];
+
+export const seedMovementsData = [
+  // SEC-A-B movements on 2026-09-10 creating realistic operational gaps:
+  // Gap 1: 08:00 - 09:30 (90 min free)
+  // Movement 1: 09:30 - 09:45 (TRN-22435)
+  // Gap 2: 09:45 - 10:15 (30 min free)
+  // Movement 2: 10:15 - 10:30 (TRN-12001)
+  // Gap 3: 10:30 - 11:00 (30 min free)
+  // Movement 3: 11:00 - 11:20 (TRN-14055)
+  // Gap 4: 11:20 - 12:10 (50 min free)
+  // Movement 4: 12:10 - 12:30 (TRN-54311)
+  // Gap 5: 12:30 - 13:00 (30 min free)
+  // Movement 5: 13:00 - 13:20 (TRN-BCN-02)
+  // Gap 6: 13:20 - 14:15 (55 min free)
+  // Movement 6: 14:15 - 14:35 (TRN-12002)
+  // Gap 7: 14:35 - 15:00 (25 min free)
+  // Restriction: 15:00 - 16:00
+  // Gap 8: 16:00 - 18:00 (120 min free)
+  {
+    train_number: 'TRN-22435',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T09:30:00.000Z',
+    exit_time: '2026-09-10T09:45:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-22435',
+    section_code: 'SEC-B-D',
+    sequence_number: 2,
+    entry_time: '2026-09-10T09:50:00.000Z',
+    exit_time: '2026-09-10T10:10:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-12001',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T10:15:00.000Z',
+    exit_time: '2026-09-10T10:30:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-12001',
+    section_code: 'SEC-B-D',
+    sequence_number: 2,
+    entry_time: '2026-09-10T10:35:00.000Z',
+    exit_time: '2026-09-10T10:55:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-12001',
+    section_code: 'SEC-D-E',
+    sequence_number: 3,
+    entry_time: '2026-09-10T11:00:00.000Z',
+    exit_time: '2026-09-10T11:25:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-14055',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T11:00:00.000Z',
+    exit_time: '2026-09-10T11:20:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-14055',
+    section_code: 'SEC-B-C',
+    sequence_number: 2,
+    entry_time: '2026-09-10T11:35:00.000Z',
+    exit_time: '2026-09-10T11:55:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-54311',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T12:10:00.000Z',
+    exit_time: '2026-09-10T12:30:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-54311',
+    section_code: 'SEC-B-D',
+    sequence_number: 2,
+    entry_time: '2026-09-10T12:35:00.000Z',
+    exit_time: '2026-09-10T13:00:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-BCN-02',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T13:00:00.000Z',
+    exit_time: '2026-09-10T13:20:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-BCN-02',
+    section_code: 'SEC-B-D',
+    sequence_number: 2,
+    entry_time: '2026-09-10T13:25:00.000Z',
+    exit_time: '2026-09-10T13:50:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-BCN-02',
+    section_code: 'SEC-D-E',
+    sequence_number: 3,
+    entry_time: '2026-09-10T14:00:00.000Z',
+    exit_time: '2026-09-10T14:30:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-12002',
+    section_code: 'SEC-A-B',
+    sequence_number: 1,
+    entry_time: '2026-09-10T14:15:00.000Z',
+    exit_time: '2026-09-10T14:35:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-64501',
+    section_code: 'SEC-B-C',
+    sequence_number: 1,
+    entry_time: '2026-09-10T14:00:00.000Z',
+    exit_time: '2026-09-10T14:20:00.000Z',
+    status: 'SCHEDULED'
+  },
+  {
+    train_number: 'TRN-BOXN-01',
+    section_code: 'SEC-B-D',
+    sequence_number: 1,
+    entry_time: '2026-09-10T15:00:00.000Z',
+    exit_time: '2026-09-10T15:30:00.000Z',
+    status: 'SCHEDULED'
+  }
+];
+
+export const seedFreightForecastsData = [
+  {
+    section_code: 'SEC-A-B',
+    forecast_date: '2026-09-10',
+    expected_entry_time: '2026-09-10T09:50:00.000Z',
+    expected_exit_time: '2026-09-10T10:10:00.000Z',
+    expected_train_count: 1,
+    confidence: 0.850,
+    source: 'CONTROL_OFFICE_FORECAST'
+  },
+  {
+    section_code: 'SEC-B-D',
+    forecast_date: '2026-09-10',
+    expected_entry_time: '2026-09-10T11:30:00.000Z',
+    expected_exit_time: '2026-09-10T12:00:00.000Z',
+    expected_train_count: 1,
+    confidence: 0.800,
+    source: 'CONTROL_OFFICE_FORECAST'
+  }
+];
+
+export const seedCorridorAvailabilityData = [
+  {
+    section_code: 'SEC-A-B',
+    availability_date: '2026-09-10',
+    start_time: '2026-09-10T15:00:00.000Z',
+    end_time: '2026-09-10T16:00:00.000Z',
+    status: 'RESTRICTED',
+    reason: 'Alpha station yard turnout renewal caution order (speed restricted to 15 km/h)',
+    source: 'OPERATIONAL_BASELINE'
+  },
+  {
+    section_code: 'SEC-B-D',
+    availability_date: '2026-09-10',
+    start_time: '2026-09-10T16:30:00.000Z',
+    end_time: '2026-09-10T17:30:00.000Z',
+    status: 'UNAVAILABLE',
+    reason: 'Power isolation test on auxiliary transformer',
+    source: 'OPERATIONAL_BASELINE'
+  }
+];
+
+export const seedTrains = async (client, stationMap) => {
+  const trainMap = new Map();
+  for (const t of seedTrainsData) {
+    const srcId = stationMap.get(t.source_station_code);
+    const destId = stationMap.get(t.destination_station_code);
+    const res = await client.query(
+      `INSERT INTO trains (train_number, name, train_type, priority, source_station_id, destination_station_id)
+       VALUES ($1, $2, $3::train_type_enum, $4::train_priority_enum, $5, $6)
+       ON CONFLICT (train_number) DO UPDATE
+       SET name = EXCLUDED.name,
+           train_type = EXCLUDED.train_type,
+           priority = EXCLUDED.priority,
+           source_station_id = EXCLUDED.source_station_id,
+           destination_station_id = EXCLUDED.destination_station_id,
+           updated_at = CURRENT_TIMESTAMP
+       RETURNING id, train_number`,
+      [t.train_number, t.name, t.train_type, t.priority, srcId, destId]
+    );
+    trainMap.set(res.rows[0].train_number, res.rows[0].id);
+  }
+  return trainMap;
+};
+
+export const seedRoutes = async (client, trainMap) => {
+  const routeMap = new Map();
+  for (const r of seedRoutesData) {
+    const trainId = trainMap.get(r.train_number);
+    const res = await client.query(
+      `INSERT INTO train_routes (train_id, route_name, service_date)
+       VALUES ($1, $2, $3)
+       RETURNING id, train_id`,
+      [trainId, r.route_name, r.service_date]
+    );
+    routeMap.set(`${r.train_number}_${r.service_date}`, res.rows[0].id);
+  }
+  return routeMap;
+};
+
+export const seedMovements = async (client, routeMap, sectionMap) => {
+  for (const m of seedMovementsData) {
+    const routeId = routeMap.get(`${m.train_number}_2026-09-10`);
+    const secId = sectionMap.get(m.section_code);
+    if (!routeId || !secId) continue;
+
+    await client.query(
+      `INSERT INTO train_movements (
+        train_route_id, section_id, sequence_number,
+        entry_time, exit_time, scheduled_entry_time, scheduled_exit_time, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $4, $5, $6::movement_status_enum)`,
+      [routeId, secId, m.sequence_number, m.entry_time, m.exit_time, m.status]
+    );
+  }
+};
+
+export const seedFreight = async (client, sectionMap) => {
+  for (const f of seedFreightForecastsData) {
+    const secId = sectionMap.get(f.section_code);
+    if (!secId) continue;
+    await client.query(
+      `INSERT INTO freight_forecasts (
+        section_id, forecast_date, expected_entry_time, expected_exit_time,
+        expected_train_count, confidence, source
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [secId, f.forecast_date, f.expected_entry_time, f.expected_exit_time, f.expected_train_count, f.confidence, f.source]
+    );
+  }
+};
+
+export const seedCorridor = async (client, sectionMap) => {
+  for (const c of seedCorridorAvailabilityData) {
+    const secId = sectionMap.get(c.section_code);
+    if (!secId) continue;
+    await client.query(
+      `INSERT INTO corridor_availability (
+        section_id, availability_date, start_time, end_time, status, reason, source
+      )
+      VALUES ($1, $2, $3, $4, $5::corridor_status_enum, $6, $7)`,
+      [secId, c.availability_date, c.start_time, c.end_time, c.status, c.reason, c.source]
+    );
+  }
+};
+
 export const runSeed = async () => {
-  console.log('--- Seeding Fictional Railway Network & Maintenance Data ---');
+  console.log('--- Seeding Fictional Railway Network, Maintenance & Train Operations Data ---');
   const client = new Client({
     connectionString: process.env.DATABASE_URL
   });
@@ -734,6 +1101,26 @@ export const runSeed = async () => {
     console.log('Seeding maintenance jobs, assignments, and resources...');
     await seedJobs(client, sectionMap, assetMap, crewMap);
     console.log(`Seeded ${seedJobsData.length} maintenance jobs.`);
+
+    console.log('Seeding trains...');
+    const trainMap = await seedTrains(client, stationMap);
+    console.log(`Seeded ${trainMap.size} trains.`);
+
+    console.log('Seeding train routes...');
+    const routeMap = await seedRoutes(client, trainMap);
+    console.log(`Seeded ${routeMap.size} train routes.`);
+
+    console.log('Seeding train movements...');
+    await seedMovements(client, routeMap, sectionMap);
+    console.log(`Seeded ${seedMovementsData.length} train movements.`);
+
+    console.log('Seeding freight forecasts...');
+    await seedFreight(client, sectionMap);
+    console.log(`Seeded ${seedFreightForecastsData.length} freight forecasts.`);
+
+    console.log('Seeding corridor availability & restrictions...');
+    await seedCorridor(client, sectionMap);
+    console.log(`Seeded ${seedCorridorAvailabilityData.length} corridor restrictions.`);
 
     await client.query('COMMIT');
     console.log('Database seeding completed successfully.');

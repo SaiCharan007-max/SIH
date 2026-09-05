@@ -147,6 +147,9 @@ npm run verify-db
 
 # Run maintenance management domain verification suite
 npm run verify-maintenance
+
+# Run train operations & corridor availability verification suite
+npm run verify-operations
 ```
 
 ### Running the Backend
@@ -173,10 +176,26 @@ npm run verify-maintenance
   }
   ```
 
-### Maintenance Job API Endpoints
+### API Endpoints Overview
 
+#### Maintenance Management
 - `POST /api/maintenance/jobs` - Create a maintenance job
 - `GET /api/maintenance/jobs` - List jobs with optional query filters (`department`, `section_id`, `asset_id`, `status`, `criticality`, `urgency`)
 - `GET /api/maintenance/jobs/:id` - Fetch detailed job with crew assignments and resource requirements
 - `PATCH /api/maintenance/jobs/:id` - Update status, criticality, urgency, duration, or schedule
+
+#### Train Operations & Corridor
+- `POST /api/trains` - Register a train service
+- `GET /api/trains` - List trains with filters (`train_type`, `priority`, `active`)
+- `GET /api/trains/:id` - Get single train details
+- `PATCH /api/trains/:id` - Update train metadata
+- `POST /api/train-routes` - Define a train route instance for a service date
+- `GET /api/train-routes` - List train routes
+- `POST /api/train-movements` - Log/schedule a train movement through a section
+- `GET /api/train-movements` - List train movements with filters (`section_id`, `date`, `status`)
+- `POST /api/freight-forecasts` - Add freight rake forecasts from Control Office
+- `GET /api/freight-forecasts` - List freight forecasts
+- `GET /api/corridor/availability` - Calculate free corridor windows and detect conflicts for a section/date horizon
+- `POST /api/corridor/availability` - Register operational baseline corridor restrictions
+
 

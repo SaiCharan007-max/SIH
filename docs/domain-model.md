@@ -361,4 +361,149 @@ The maintenance management subsystem captures all incoming maintenance demands a
   - `requires_signal_shutdown`: requires disconnection of signaling interlocking circuits.
   These flags allow the future optimizer to cross-match and co-schedule jobs requiring identical shutdown windows.
 
+---
+
+## 6. Train Operations Domain
+
+The train operations subsystem models the operational demand on physical rail infrastructure, converting timetable services into concrete spatial-temporal section occupancies.
+
+### 6.1 Conceptual Traversal Hierarchy
+
+```
++-------------------------------------------------------------+
+|                           TRAIN                             |
+|          (Service Identity, Type, Priority, Endpoints)      |
++-------------------------------------------------------------+
+                               | 1
+                               |
+                               v ∞
++-------------------------------------------------------------+
+|                        TRAIN ROUTE                          |
+|         (Service Date, Run Instance, Route Pattern)         |
++-------------------------------------------------------------+
+                               | 1
+                               |
+                               v ∞
++-------------------------------------------------------------+
+|                       TRAIN MOVEMENT                        |
+|       (Sequence, Scheduled & Actual Entry/Exit Times)       |
++-------------------------------------------------------------+
+                               | ∞
+                               |
+                               v 1
++-------------------------------------------------------------+
+|                      RAILWAY SECTION                        |
+|             (Physical Linear Line Segment)                  |
++-------------------------------------------------------------+
+```
+
+### 6.2 ASCII Entity-Relationship Diagram
+
+```
++-------------------------------------------------------------+
+|                           trains                            |
+|-------------------------------------------------------------|
+| PK  id                      UUID                            |
+| UQ  train_number            VARCHAR(32)                     |
+|     name                    VARCHAR(255)                    |
+|     train_type              train_type_enum (ENUM)          |
+|     priority                train_priority_enum (ENUM)      |
+| FK  source_station_id       UUID NOT NULL                   |
+| FK  destination_station_id  UUID NOT NULL                   |
+|     active                  BOOLEAN                         |
+|     created_at              TIMESTAMPTZ                     |
+|     updated_at              TIMESTAMPTZ                     |
+|     CONSTRAINT              CHECK (source <> destination)   |
++-------------------------------------------------------------+
+         | 1
+         |
+         | train_id (ON DELETE RESTRICT)
+         v ∞
++-------------------------------------------------------------+
+|                        train_routes                         |
+|-------------------------------------------------------------|
+| PK  id            UUID                                      |
+| FK  train_id      UUID NOT NULL                             |
+|     route_name    VARCHAR(255)                              |
+|     service_date  DATE                                      |
+|     active        BOOLEAN                                   |
+|     created_at    TIMESTAMPTZ                               |
+|     updated_at    TIMESTAMPTZ                               |
++-------------------------------------------------------------+
+         | 1
+         |
+         | train_route_id (ON DELETE RESTRICT)
+         v ∞
++-------------------------------------------------------------+       ∞      +--------------------+
+|                       train_movements                       |------------->|  railway_sections  |
+|-------------------------------------------------------------|  section_id  +--------------------+
+| PK  id                    UUID                              |
+| FK  train_route_id        UUID NOT NULL                     |
+| FK  section_id            UUID NOT NULL                     |
+|     sequence_number       INTEGER CHECK (> 0)               |
+|     entry_time            TIMESTAMPTZ                       |
+|     exit_time             TIMESTAMPTZ                       |
+|     scheduled_entry_time  TIMESTAMPTZ                       |
+|     scheduled_exit_time   TIMESTAMPTZ                       |
+|     actual_entry_time     TIMESTAMPTZ NULL                  |
+|     actual_exit_time      TIMESTAMPTZ NULL                  |
+|     status                movement_status_enum (ENUM)       |
+|     created_at            TIMESTAMPTZ                       |
+|     updated_at            TIMESTAMPTZ                       |
+|     CONSTRAINT            CHECK (entry_time < exit_time)    |
+|     CONSTRAINT            CHECK (sched_entry < sched_exit)  |
++-------------------------------------------------------------+
+
++-------------------------------------------------------------+       ∞      +--------------------+
+|                      freight_forecasts                      |------------->|  railway_sections  |
+|-------------------------------------------------------------|  section_id  +--------------------+
+| PK  id                    UUID                              |
+| FK  section_id            UUID NOT NULL                     |
+|     forecast_date         DATE                              |
+|     expected_entry_time   TIMESTAMPTZ                       |
+|     expected_exit_time    TIMESTAMPTZ                       |
+|     expected_train_count  INTEGER CHECK (> 0)               |
+|     confidence            NUMERIC(4,3) CHECK (0..1)         |
+|     source                VARCHAR(64)                       |
+|     created_at            TIMESTAMPTZ                       |
+|     updated_at            TIMESTAMPTZ                       |
++-------------------------------------------------------------+
+
++-------------------------------------------------------------+       ∞      +--------------------+
+|                    corridor_availability                    |------------->|  railway_sections  |
+|-------------------------------------------------------------|  section_id  +--------------------+
+| PK  id                 UUID                                 |
+| FK  section_id         UUID NOT NULL                        |
+|     availability_date  DATE                                 |
+|     start_time         TIMESTAMPTZ                          |
+|     end_time           TIMESTAMPTZ                          |
+|     status             corridor_status_enum (ENUM)          |
+|     reason             TEXT NULL                            |
+|     source             VARCHAR(64)                          |
+|     created_at         TIMESTAMPTZ                          |
+|     updated_at         TIMESTAMPTZ                          |
++-------------------------------------------------------------+
+```
+
+### 6.3 Operational Rationales for SIH26027
+
+- **Why Train Movements Are Primary (Beyond Origin and Destination)**:
+  Knowing that a train departs Station A at 08:00 and arrives at Station E at 14:00 is insufficient for maintenance block planning. Maintenance work takes place on individual physical track segments (e.g., Section B-D). What matters to the block optimizer is the exact **Section Occupancy Interval**—the precise moment the train enters Section B-D and the moment it clears the block section. A 4-hour maintenance block cannot be granted if a high-priority train occupies that section for 20 minutes in the middle of the window.
+- **Scheduled vs. Actual Times**:
+  - `scheduled_entry_time` / `scheduled_exit_time`: Static published timetable commitments.
+  - `actual_entry_time` / `actual_exit_time`: Real-time execution recorded from signaling/dataloggers.
+  - `entry_time` / `exit_time`: The operational working projection.
+  This duality enables future dynamic replanning when train delays drift into proposed maintenance windows.
+- **Freight-Train Forecasts (`freight_forecasts`)**:
+  Unlike passenger services with fixed timetables, freight trains on Indian Railways operate primarily on demand ("ordering of goods trains"). The Control Office issues time-window forecasts with confidence levels (e.g. 80% probability of 1 freight rake traversing Section A-B between 11:30 and 12:00). Storing forecasts enables the future optimizer to trade off passenger punctuality vs. freight throughput when scheduling blocks.
+- **Corridor Availability & Baseline Restrictions (`corridor_availability`)**:
+  Represents non-train infrastructure restrictions (e.g., speed restrictions, planned power substation isolation, yard remodeling). It establishes the operational baseline of whether track capacity is physically available.
+- **Free Corridor Windows Calculation**:
+  The system computes available gaps by taking a requested operational horizon $[H_{start}, H_{end}]$ on a section:
+  1. Identifying all scheduled train occupancies overlapping $[H_{start}, H_{end}]$.
+  2. Identifying all active corridor restrictions.
+  3. Merging overlapping or adjacent busy intervals into unified busy blocks.
+  4. Inverting the merged blocks against $[H_{start}, H_{end}]$ to produce the exact chronological free time gaps available for maintenance blocks.
+
+
 
