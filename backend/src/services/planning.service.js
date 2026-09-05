@@ -4,9 +4,17 @@ import {
   findActiveCrews,
   findTrainMovementsForDate,
   findFreightForecastsForDate,
-  findCorridorRestrictionsForDate,
-  persistOptimizedBlocks
+  findCorridorRestrictionsForDate
 } from '../repositories/planning.repository.js';
+import {
+  insertPlanningRun,
+  findLatestRunForDate,
+  findPlanningRunDetails,
+  insertPlanningEvent,
+  persistReplannedRun
+} from '../repositories/replanning.repository.js';
+import { analyzeEventImpact } from './planningImpact.service.js';
+import { comparePlanningRuns } from './planningComparison.service.js';
 import { scoreJob } from './priority/priorityModel.js';
 
 /**
@@ -238,7 +246,7 @@ export const invokePythonOptimizer = async (snapshot) => {
 };
 
 /**
- * Orchestrates planning: snapshot generation -> optimization -> validation -> persistence.
+ * Orchestrates planning: snapshot generation -> optimization -> validation -> persistence with run versioning.
  */
 export const generateDailyPlan = async ({ planDate, startTime = '06:00', endTime = '22:00' }) => {
   // 1. Validation
@@ -264,19 +272,264 @@ export const generateDailyPlan = async ({ planDate, startTime = '06:00', endTime
   // 4. Validate output
   validateOptimizerOutput(snapshot, optimizedPlan);
 
-  // 5. Persist Proposed Plan
-  let persistedBlocks = [];
-  if (optimizedPlan.blocks && optimizedPlan.blocks.length > 0) {
-    persistedBlocks = await persistOptimizedBlocks(planDate, optimizedPlan.blocks, 'PROPOSED');
-  }
+  // 5. Generate Run Code (e.g. RUN-001)
+  const runCode = `RUN-${Date.now().toString().slice(-6)}`;
 
-  // 6. Return response
+  // 6. Persist Plan with Run Versioning
+  const { run, blocks: persistedBlocks } = await persistReplannedRun({
+    runCode,
+    planDate,
+    runType: 'INITIAL',
+    parentRunId: null,
+    reason: 'Initial daily planning schedule',
+    metrics: optimizedPlan.metrics,
+    blocks: optimizedPlan.blocks || [],
+    eventId: null
+  });
+
+  // 7. Return response
   return {
+    run_id: run.id,
+    run_code: run.run_code,
     plan_date: planDate,
     status: 'PROPOSED',
     blocks: optimizedPlan.blocks,
     unscheduled_jobs: optimizedPlan.unscheduled_jobs,
     metrics: optimizedPlan.metrics,
     persisted_block_count: persistedBlocks.length
+  };
+};
+
+/**
+ * Orchestrates dynamic replanning:
+ * 1. Log event into planning_events.
+ * 2. Retrieve latest active/proposed plan.
+ * 3. Perform impact analysis (detect affected vs frozen jobs).
+ * 4. Assemble REPLAN snapshot with frozen jobs and previous schedule.
+ * 5. Call Python optimizer.
+ * 6. Validate complete replanned schedule.
+ * 7. Atomically persist new planning run, link blocks, supersede parent run.
+ * 8. Return comparison & metrics.
+ */
+export const executeReplan = async ({ planDate, event }) => {
+  if (!planDate || !/^\d{4}-\d{2}-\d{2}$/.test(planDate)) {
+    const err = new Error('Invalid plan_date. Format must be YYYY-MM-DD');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!event || !event.event_type) {
+    const err = new Error('Invalid event payload: event_type is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 1. Find parent active run
+  const parentRun = await findLatestRunForDate(planDate);
+  if (!parentRun) {
+    const err = new Error(`No active planning run found for date ${planDate} to replan against`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const parentRunDetails = await findPlanningRunDetails(parentRun.id);
+
+  // 2. Insert event record (RECEIVED)
+  const eventCode = `EVT-${Date.now().toString().slice(-6)}`;
+  const savedEvent = await insertPlanningEvent({
+    eventCode,
+    eventType: event.event_type,
+    planDate,
+    sectionId: event.section_id,
+    jobId: event.job_id,
+    trainId: event.train_id,
+    crewId: event.crew_id,
+    oldValue: event.old_value,
+    newValue: event.new_value,
+    description: event.description || `Disruption event: ${event.event_type}`,
+    status: 'RECEIVED'
+  });
+
+  // 3. Build base snapshot
+  const baseSnapshot = await buildPlanningSnapshot({ planDate, startTime: '06:00', endTime: '22:00' });
+
+  // 4. Perform Impact Analysis
+  const impact = analyzeEventImpact(parentRunDetails, event, baseSnapshot);
+
+  // 5. Build Previous Schedule Map
+  const previousSchedule = {};
+  for (const b of parentRunDetails.blocks || []) {
+    for (const j of b.jobs || []) {
+      previousSchedule[j.job_id] = {
+        start_time: extractTimeString(j.planned_start || j.start_time),
+        end_time: extractTimeString(j.planned_end || j.end_time)
+      };
+    }
+  }
+
+  // 6. Assemble REPLAN Snapshot
+  const replanSnapshot = {
+    ...baseSnapshot,
+    mode: 'REPLAN',
+    frozen_jobs: impact.frozen_jobs,
+    replan_jobs: impact.affected_jobs,
+    previous_schedule: previousSchedule
+  };
+
+  // Apply event-specific updates to snapshot
+  if (event.event_type === 'MAINTENANCE_OVERRUN' && event.job_id) {
+    const newEndStr = event.new_value?.actual_end || event.new_value?.end_time;
+    if (newEndStr) {
+      const overrunningJob = replanSnapshot.jobs.find(j => j.job_id === event.job_id);
+      if (overrunningJob) {
+        const prevStart = previousSchedule[event.job_id]?.start_time || '12:00';
+        const startMin = timeToMinutes(prevStart);
+        const newEndMin = timeToMinutes(newEndStr);
+        overrunningJob.duration_minutes = Math.max(overrunningJob.duration_minutes, newEndMin - startMin);
+
+        // Update frozen_jobs with overrun end time so it stays anchored at extended interval
+        const fj = replanSnapshot.frozen_jobs.find(f => f.job_id === event.job_id);
+        if (fj) {
+          fj.end_time = newEndStr;
+        } else {
+          replanSnapshot.frozen_jobs.push({
+            job_id: event.job_id,
+            start_time: prevStart,
+            end_time: newEndStr,
+            assigned_crew_id: overrunningJob.crew_ids?.[0]
+          });
+        }
+      }
+    }
+  } else if (event.event_type === 'TRAIN_DELAY') {
+    const newEntry = event.new_value?.entry_time;
+    const newExit = event.new_value?.exit_time;
+    if (newEntry && newExit) {
+      const tm = replanSnapshot.train_movements.find(t =>
+        (event.train_id && t.train_id === event.train_id) ||
+        (event.section_id && t.section_id === event.section_id && event.old_value?.entry_time && t.entry_time.startsWith(event.old_value.entry_time))
+      );
+      if (tm) {
+        tm.entry_time = newEntry;
+        tm.exit_time = newExit;
+      } else if (event.section_id) {
+        replanSnapshot.train_movements.push({
+          movement_id: `delay-${Date.now()}`,
+          train_id: event.train_id || `TRN-DELAY-${Date.now().toString().slice(-4)}`,
+          train_number: 'TRN-DELAY',
+          section_id: event.section_id,
+          entry_time: newEntry,
+          exit_time: newExit
+        });
+      }
+    }
+  } else if (event.event_type === 'TRAIN_CANCELLATION') {
+    replanSnapshot.train_movements = replanSnapshot.train_movements.filter(t =>
+      !(event.train_id && t.train_id === event.train_id) &&
+      !(event.section_id && t.section_id === event.section_id && event.old_value?.entry_time && t.entry_time.startsWith(event.old_value.entry_time))
+    );
+  } else if (event.event_type === 'CREW_UNAVAILABLE' && event.crew_id) {
+    replanSnapshot.crews = replanSnapshot.crews.filter(c => c.crew_id !== event.crew_id);
+    for (const j of replanSnapshot.jobs) {
+      j.crew_ids = (j.crew_ids || []).filter(cid => cid !== event.crew_id);
+    }
+  } else if (event.event_type === 'CORRIDOR_RESTRICTION_CHANGE' && event.section_id) {
+    const rStart = event.new_value?.start_time || '00:00';
+    const rEnd = event.new_value?.end_time || '23:59';
+    replanSnapshot.corridor_restrictions.push({
+      restriction_id: `restr-${Date.now()}`,
+      section_id: event.section_id,
+      start_time: rStart,
+      end_time: rEnd,
+      is_available: false,
+      reason: event.description || 'Corridor restriction change'
+    });
+  }
+
+  // Ensure every frozen job's duration_minutes matches its fixed interval
+  for (const fj of replanSnapshot.frozen_jobs) {
+    const j = replanSnapshot.jobs.find(job => job.job_id === fj.job_id);
+    if (j) {
+      const dur = timeToMinutes(fj.end_time) - timeToMinutes(fj.start_time);
+      if (dur > 0) {
+        j.duration_minutes = dur;
+      }
+    }
+  }
+
+  // 7. Invoke Python Optimizer
+  let optimizedPlan;
+  try {
+    optimizedPlan = await invokePythonOptimizer(replanSnapshot);
+  } catch (err) {
+    // Record failure in event
+    await insertPlanningRun({
+      runCode: `RUN-FAIL-${Date.now().toString().slice(-6)}`,
+      planDate,
+      runType: 'REPLAN',
+      parentRunId: parentRun.id,
+      status: 'FAILED',
+      reason: err.message
+    });
+    const customErr = new Error(`Replanning optimization failed: ${err.message}`);
+    customErr.statusCode = 502;
+    throw customErr;
+  }
+
+  // 8. Validate output
+  validateOptimizerOutput(replanSnapshot, optimizedPlan);
+
+  // 9. Verify frozen jobs did not move
+  for (const fj of replanSnapshot.frozen_jobs) {
+    const scheduledJ = optimizedPlan.blocks
+      .flatMap(b => b.jobs)
+      .find(j => j.job_id === fj.job_id);
+
+    if (!scheduledJ) {
+      throw new Error(`Frozen job ${fj.job_id} was dropped by optimizer in REPLAN mode`);
+    }
+    if (scheduledJ.start_time !== fj.start_time || scheduledJ.end_time !== fj.end_time) {
+      throw new Error(
+        `Frozen job ${fj.job_id} was moved from ${fj.start_time}-${fj.end_time} to ${scheduledJ.start_time}-${scheduledJ.end_time}`
+      );
+    }
+  }
+
+  // 10. Persist Replan Run Atomically
+  const newRunCode = `RUN-${Date.now().toString().slice(-6)}`;
+  const { run: newRun, blocks: persistedBlocks } = await persistReplannedRun({
+    runCode: newRunCode,
+    planDate,
+    runType: 'REPLAN',
+    parentRunId: parentRun.id,
+    reason: `Replanned due to ${event.event_type}: ${event.description || ''}`,
+    metrics: optimizedPlan.metrics,
+    blocks: optimizedPlan.blocks || [],
+    eventId: savedEvent.id
+  });
+
+  // 11. Retrieve full details of both runs for comparison
+  const newRunDetails = await findPlanningRunDetails(newRun.id);
+  const comparison = comparePlanningRuns(parentRunDetails, newRunDetails);
+
+  return {
+    run_id: newRun.id,
+    run_code: newRun.run_code,
+    parent_run_id: parentRun.id,
+    parent_run_code: parentRun.run_code,
+    status: 'PROPOSED',
+    reason: event.event_type,
+    affected_sections: impact.affected_sections,
+    affected_blocks: impact.affected_blocks,
+    unchanged_blocks: comparison.summary.blocks_count_new - impact.affected_blocks.length,
+    replanned_blocks: impact.affected_blocks.length,
+    metrics: {
+      jobs_affected: impact.affected_jobs.length,
+      jobs_rescheduled: comparison.summary.jobs_moved,
+      jobs_unscheduled: comparison.summary.jobs_unscheduled,
+      jobs_unchanged: comparison.summary.jobs_unchanged
+    },
+    comparison,
+    plan: newRunDetails
   };
 };

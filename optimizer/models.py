@@ -58,15 +58,29 @@ class CorridorRestrictionInput(BaseModel):
     end_time: str
     status: str  # UNAVAILABLE, RESTRICTED, AVAILABLE
 
+class FrozenJobInput(BaseModel):
+    job_id: str
+    start_time: str
+    end_time: str
+    assigned_crew_id: Optional[str] = None
+
+class PreviousJobSchedule(BaseModel):
+    start_time: str
+    end_time: str
+
 class PlanningSnapshot(BaseModel):
     plan_date: str
     planning_window: PlanningWindow
+    mode: str = "INITIAL"  # "INITIAL" or "REPLAN"
     sections: List[SectionInput] = Field(default_factory=list)
     jobs: List[JobInput] = Field(default_factory=list)
     crews: List[CrewInput] = Field(default_factory=list)
     train_movements: List[TrainMovementInput] = Field(default_factory=list)
     freight_forecasts: List[FreightForecastInput] = Field(default_factory=list)
     corridor_restrictions: List[CorridorRestrictionInput] = Field(default_factory=list)
+    frozen_jobs: List[FrozenJobInput] = Field(default_factory=list)
+    replan_jobs: List[str] = Field(default_factory=list)
+    previous_schedule: Dict[str, PreviousJobSchedule] = Field(default_factory=dict)
 
 # --- Output Models (Optimized Plan) ---
 
@@ -76,6 +90,9 @@ class ScheduledBlockJob(BaseModel):
     end_time: str
     assigned_crew_id: Optional[str] = None
     deadline_met: Optional[bool] = True
+    old_start: Optional[str] = None
+    old_end: Optional[str] = None
+    moved: Optional[bool] = False
 
 class MaintenanceBlockOutput(BaseModel):
     block_code: str

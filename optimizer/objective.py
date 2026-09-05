@@ -11,13 +11,15 @@ DEFAULT_WEIGHTS = {
     "FRAGMENTATION_WEIGHT": 5,     # Penalty per separate maintenance block
     "LATENESS_WEIGHT": 1,          # Mild penalty for finishing later in the day or after deadline
     "ALIGNMENT_WEIGHT": 10,        # Reward for aligning start times of compatible jobs on same section
+    "MOVED_JOB_PENALTY": 50,       # Penalty for moving a previously scheduled job away from original start
 }
 
 def apply_objective(
     model: cp_model.CpModel,
     job_vars: Dict[str, Any],
     jobs: List[Any],
-    weights: Dict[str, int] = DEFAULT_WEIGHTS
+    weights: Dict[str, int] = DEFAULT_WEIGHTS,
+    snapshot: Any = None
 ):
     """
     Builds the CP-SAT maximization objective:
@@ -25,6 +27,7 @@ def apply_objective(
         Sum( Priority_Weight * priority_score * is_scheduled )
         + Alignment_Reward (pairs of jobs on same section overlapping/sharing start)
         - Lateness_Weight * (start time)
+        - Moved_Job_Penalty * deviation_from_previous_schedule
     """
     objective_terms = []
 
@@ -39,6 +42,18 @@ def apply_objective(
 
         # Mild lateness penalty (encourages earlier completion within day without overpowering priority)
         objective_terms.append(start_var * (-weights["LATENESS_WEIGHT"]))
+
+        # Replanning penalty: if job had a previous schedule and was moved
+        if snapshot and snapshot.mode == "REPLAN" and snapshot.previous_schedule:
+            if j_id in snapshot.previous_schedule:
+                from time_utils import time_to_minutes
+                old_start_min = time_to_minutes(snapshot.previous_schedule[j_id].start_time)
+
+                # Deviation variable: |start - old_start|
+                diff_var = model.NewIntVar(0, 1440, f"diff_{j_id}")
+                model.Add(diff_var >= start_var - old_start_min)
+                model.Add(diff_var >= old_start_min - start_var)
+                objective_terms.append(diff_var * (-weights.get("MOVED_JOB_PENALTY", 50)))
 
     # Encourage consolidation: compatible jobs on the same section that overlap/align start time
     for i in range(len(jobs)):

@@ -17,7 +17,8 @@ from constraints import (
     add_window_constraints,
     add_operational_conflict_constraints,
     add_crew_constraints,
-    add_resource_constraints
+    add_resource_constraints,
+    add_frozen_job_constraints
 )
 from objective import apply_objective, DEFAULT_WEIGHTS
 
@@ -106,15 +107,23 @@ def solve_planning_snapshot(snapshot: PlanningSnapshot) -> OptimizedPlanOutput:
     win_start_min = time_to_minutes(snapshot.planning_window.start)
     win_end_min = time_to_minutes(snapshot.planning_window.end)
 
+    frozen_durations: Dict[str, int] = {}
+    if snapshot.mode == "REPLAN" and snapshot.frozen_jobs:
+        for fj in snapshot.frozen_jobs:
+            dur = time_to_minutes(fj.end_time) - time_to_minutes(fj.start_time)
+            if dur > 0:
+                frozen_durations[fj.job_id] = dur
+
     # 1. Create variables for each job
     job_vars: Dict[str, Any] = {}
     for job in snapshot.jobs:
         j_id = job.job_id
+        duration = frozen_durations.get(j_id, job.duration_minutes)
         is_scheduled = model.NewBoolVar(f"{j_id}_is_scheduled")
         start = model.NewIntVar(win_start_min, win_end_min, f"{j_id}_start")
         end = model.NewIntVar(win_start_min, win_end_min, f"{j_id}_end")
         interval = model.NewOptionalIntervalVar(
-            start, job.duration_minutes, end, is_scheduled, f"{j_id}_interval"
+            start, duration, end, is_scheduled, f"{j_id}_interval"
         )
         job_vars[j_id] = {
             "is_scheduled": is_scheduled,
@@ -128,9 +137,10 @@ def solve_planning_snapshot(snapshot: PlanningSnapshot) -> OptimizedPlanOutput:
     add_operational_conflict_constraints(model, job_vars, snapshot)
     add_crew_constraints(model, job_vars, snapshot)
     add_resource_constraints(model, job_vars, snapshot)
+    add_frozen_job_constraints(model, job_vars, snapshot)
 
     # 3. Apply objective
-    apply_objective(model, job_vars, snapshot.jobs, DEFAULT_WEIGHTS)
+    apply_objective(model, job_vars, snapshot.jobs, DEFAULT_WEIGHTS, snapshot=snapshot)
 
     # 4. Solve
     solver = cp_model.CpSolver()
@@ -183,7 +193,7 @@ def solve_planning_snapshot(snapshot: PlanningSnapshot) -> OptimizedPlanOutput:
                     deadline_missed_count += 1
 
                 scheduled_priority_value += job.priority_score
-                total_maintenance_minutes += job.duration_minutes
+                total_maintenance_minutes += (j_end_min - j_start_min)
 
                 item = {
                     "job_id": j_id,
@@ -220,16 +230,27 @@ def solve_planning_snapshot(snapshot: PlanningSnapshot) -> OptimizedPlanOutput:
             b_dur = b_end_min - b_start_min
             total_block_minutes += b_dur
 
-            block_jobs = [
-                ScheduledBlockJob(
+            block_jobs = []
+            for j in rb["jobs"]:
+                old_start = None
+                old_end = None
+                moved = False
+                if snapshot.previous_schedule and j["job_id"] in snapshot.previous_schedule:
+                    prev = snapshot.previous_schedule[j["job_id"]]
+                    old_start = prev.start_time
+                    old_end = prev.end_time
+                    moved = (old_start != j["start_time"] or old_end != j["end_time"])
+
+                block_jobs.append(ScheduledBlockJob(
                     job_id=j["job_id"],
                     start_time=j["start_time"],
                     end_time=j["end_time"],
                     assigned_crew_id=j.get("assigned_crew_id"),
-                    deadline_met=j.get("deadline_met", True)
-                )
-                for j in rb["jobs"]
-            ]
+                    deadline_met=j.get("deadline_met", True),
+                    old_start=old_start,
+                    old_end=old_end,
+                    moved=moved
+                ))
 
             blocks_output.append(MaintenanceBlockOutput(
                 block_code=b_code,

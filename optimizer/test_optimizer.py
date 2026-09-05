@@ -321,3 +321,62 @@ def test_deterministic_result_for_identical_input():
     assert r1.metrics.total_block_minutes == r2.metrics.total_block_minutes
     assert len(r1.blocks) == len(r2.blocks)
     assert r1.blocks[0].start_time == r2.blocks[0].start_time
+
+def test_replan_preserves_frozen_jobs_and_moves_affected():
+    """
+    Verifies that in REPLAN mode, frozen jobs remain exactly at their fixed start/end times,
+    while affected replannable jobs are rescheduled to accommodate the disruption.
+    """
+    from models import FrozenJobInput, PreviousJobSchedule
+
+    # Initial scenario: JOB-A was 12:00-14:00, JOB-B was 12:00-13:30 (TRD), JOB-C was 12:00-13:00 (SNT)
+    # Now JOB-A had an overrun until 15:00! So JOB-A is frozen at 12:00-15:00.
+    # JOB-B and JOB-C must move after 15:00.
+    snapshot = PlanningSnapshot(
+        plan_date="2026-09-10",
+        planning_window=PlanningWindow(start="12:00", end="18:00"),
+        mode="REPLAN",
+        sections=[SectionInput(section_id="SEC-A12")],
+        jobs=[
+            JobInput(
+                job_id="JOB-A", section_id="SEC-A12", department="ENG", duration_minutes=180, priority_score=92.0, crew_ids=["CREW-ENG"],
+                resources=[JobResourceInput(resource_name="OHE_LADDER_TROLLEY", quantity=1)]
+            ),
+            JobInput(
+                job_id="JOB-B", section_id="SEC-A12", department="TRD", duration_minutes=90, priority_score=84.0, crew_ids=["CREW-TRD"],
+                resources=[JobResourceInput(resource_name="OHE_LADDER_TROLLEY", quantity=1)]
+            ),
+            JobInput(job_id="JOB-C", section_id="SEC-A12", department="SNT", duration_minutes=60, priority_score=79.0, crew_ids=["CREW-SNT"])
+        ],
+        crews=[
+            CrewInput(crew_id="CREW-ENG", department="ENG", active=True),
+            CrewInput(crew_id="CREW-TRD", department="TRD", active=True),
+            CrewInput(crew_id="CREW-SNT", department="SNT", active=True),
+        ],
+        frozen_jobs=[
+            FrozenJobInput(job_id="JOB-A", start_time="12:00", end_time="15:00", assigned_crew_id="CREW-ENG")
+        ],
+        replan_jobs=["JOB-B", "JOB-C"],
+        previous_schedule={
+            "JOB-A": PreviousJobSchedule(start_time="12:00", end_time="14:00"),
+            "JOB-B": PreviousJobSchedule(start_time="12:00", end_time="13:30"),
+            "JOB-C": PreviousJobSchedule(start_time="12:00", end_time="13:00")
+        },
+        train_movements=[],
+        freight_forecasts=[],
+        corridor_restrictions=[]
+    )
+
+    result = solve_planning_snapshot(snapshot)
+
+    assert result.metrics.jobs_scheduled == 3
+    # Find jobs in blocks
+    job_map = {j.job_id: j for b in result.blocks for j in b.jobs}
+
+    # 1. Frozen job JOB-A MUST be exactly 12:00 - 15:00
+    assert job_map["JOB-A"].start_time == "12:00"
+    assert job_map["JOB-A"].end_time == "15:00"
+
+    # 2. Replanned job JOB-B had a resource conflict with JOB-A so it MUST move at or after 15:00
+    assert time_to_minutes(job_map["JOB-B"].start_time) >= 900  # 15:00
+    assert job_map["JOB-B"].moved is True

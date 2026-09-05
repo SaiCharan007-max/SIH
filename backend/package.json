@@ -13,7 +13,9 @@
     "verify-maintenance": "node src/scripts/verify-maintenance.js",
     "verify-operations": "node src/scripts/verify-operations.js",
     "verify-priority": "node src/scripts/verify-priority.js",
-    "verify-planning": "node src/scripts/verify-planning.js"
+    "verify-planning": "node src/scripts/verify-planning.js",
+    "verify-replanning": "node src/scripts/verify-replanning.js",
+    "test": "node src/scripts/verify-replanning.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

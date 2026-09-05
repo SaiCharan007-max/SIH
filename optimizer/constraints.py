@@ -185,3 +185,29 @@ def add_resource_constraints(
         if len(intervals) > 1:
             # Capacity 1 -> NoOverlap
             model.AddNoOverlap(intervals)
+
+def add_frozen_job_constraints(
+    model: cp_model.CpModel,
+    job_vars: Dict[str, Any],
+    snapshot: PlanningSnapshot
+):
+    """
+    Enforces that frozen jobs in REPLAN mode cannot move:
+    start == fixed_start, end == fixed_end, is_scheduled == 1.
+    """
+    if snapshot.mode != "REPLAN" or not snapshot.frozen_jobs:
+        return
+
+    for fj in snapshot.frozen_jobs:
+        j_id = fj.job_id
+        if j_id in job_vars:
+            fixed_start_min = time_to_minutes(fj.start_time)
+            fixed_end_min = time_to_minutes(fj.end_time)
+
+            model.Add(job_vars[j_id]["is_scheduled"] == 1)
+            model.Add(job_vars[j_id]["start"] == fixed_start_min)
+            model.Add(job_vars[j_id]["end"] == fixed_end_min)
+
+            if fj.assigned_crew_id and "crew_choice_vars" in job_vars[j_id]:
+                if fj.assigned_crew_id in job_vars[j_id]["crew_choice_vars"]:
+                    model.Add(job_vars[j_id]["crew_choice_vars"][fj.assigned_crew_id] == 1)
