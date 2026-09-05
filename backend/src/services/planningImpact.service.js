@@ -81,8 +81,10 @@ export const analyzeEventImpact = (currentPlan, event, snapshot) => {
         if (otherId !== jobId) {
           if (intervalsOverlap(sj.startMin, sj.endMin, overrunningJob.startMin, newEndMin)) {
             const sameSection = sj.section_id === overrunningJob.section_id;
-            const sharesCrew = overrunningJob.crew_ids.length > 0 && sj.crew_ids.length > 0 &&
-              overrunningJob.crew_ids.some(cid => sj.crew_ids.includes(cid));
+            const sharesCrew =
+              (overrunningJob.crew_ids.length > 0 && sj.crew_ids.length > 0 &&
+                overrunningJob.crew_ids.some(cid => sj.crew_ids.includes(cid))) ||
+              (overrunningJob.department && sj.department && overrunningJob.department === sj.department);
             const sharesResource = overrunningJob.resources.length > 0 && sj.resources.length > 0 &&
               overrunningJob.resources.some(r1 => sj.resources.some(r2 => r1.resource_name === r2.resource_name));
 

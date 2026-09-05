@@ -76,9 +76,22 @@ We are developing this system **incrementally**.
     - Priority classification (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and deterministic tie-breaking.
     - Priority ranking API: `GET /api/maintenance/priorities` with query filters and reference date simulation.
     - Comprehensive unit and scenario verification suite.
-- **Upcoming Phases**:
-  - Phase 6: Python constraint-based optimization engine (Block planning & conflict detection).
-  - Phase 7: Interactive React frontend dashboard.
+  - **Phase 6: Constraint-Based Block Planning & Optimization Engine**:
+    - Google OR-Tools CP-SAT formulation for multi-department maintenance block consolidation.
+    - Python microservice with FastAPI/Uvicorn (`/optimize`), stateless constraint solving.
+    - Conflict-free scheduling around operational passenger/freight timetables.
+  - **Phase 7: Dynamic Replanning & Disruption Recovery**:
+    - Event impact analysis engine (`planningImpact.service.js`) detecting affected sections, blocks, and shared resources.
+    - Schedule invariance preservation freezing unaffected work.
+    - Transactional plan versioning (`planning_runs`, status `PROPOSED` vs `SUPERSEDED`).
+    - Multi-run diff comparison engine (`planningComparison.service.js`).
+  - **Phase 8: Frontend Planning Dashboard & Visualization**:
+    - Interactive React + Tailwind CSS operational planning client (`frontend/`).
+    - **Planning Dashboard** (`/dashboard`): Operational KPIs, active block metrics, planning pipeline explanation, and audit trail ledger.
+    - **Daily Block Timeline** (`/planning`): Dual-track section timeline (06:00 to 22:00) showing train movements and consolidated blocks with nested departmental jobs.
+    - **Maintenance Priority Directory** (`/maintenance`): Ranked work orders with backend priority scores, criticality, urgency, and multi-attribute filters.
+    - **Dynamic Replan Comparison** (`/planning/compare`): Version diff auditor highlighting moved jobs, newly scheduled work, and frozen invariants.
+    - **Railway Network Topology** (`/network`): Interactive logical diagram of stations, track sections, electrification, and installed assets.
 
 ---
 
@@ -103,10 +116,21 @@ project-root/
 │   └── .env.example
 │
 ├── optimizer/
-│   └── README.md                   # Future Python optimization module
+│   ├── app.py                      # FastAPI microservice (/optimize)
+│   ├── solver.py                   # OR-Tools CP-SAT formulation
+│   ├── constraints.py              # Operational and frozen job constraints
+│   ├── objective.py                # Multi-objective optimization with move penalty
+│   ├── models.py                   # Pydantic planning schemas
+│   └── test_optimizer.py           # Optimizer test suite (pytest)
 │
 ├── frontend/
-│   └── README.md                   # Future React frontend dashboard
+│   ├── src/
+│   │   ├── components/             # Timeline, block detail, modals, topology graph
+│   │   ├── pages/                  # Dashboard, Planning, Maintenance, Network, Compare
+│   │   ├── services/api.js         # Centralized backend API client
+│   │   └── utils/                  # Timeline coordinate math & department styles
+│   ├── package.json
+│   └── vite.config.js
 │
 ├── data/
 │   ├── network/                    # Railway network topology datasets

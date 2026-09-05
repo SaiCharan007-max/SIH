@@ -10,6 +10,7 @@ import freightForecastRouter from './routes/freightForecast.routes.js';
 import corridorRouter from './routes/corridor.routes.js';
 import priorityRouter from './routes/priority.routes.js';
 import planningRouter from './routes/planning.routes.js';
+import networkRouter from './routes/network.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -29,6 +30,8 @@ app.use('/api/train-routes', trainRouteRouter);
 app.use('/api/train-movements', trainMovementRouter);
 app.use('/api/freight-forecasts', freightForecastRouter);
 app.use('/api/corridor', corridorRouter);
+app.use('/api/network', networkRouter);
+app.use('/api', networkRouter); // supports /api/stations, /api/sections, /api/assets directly
 
 // Centralized error handling
 app.use(errorHandler);
