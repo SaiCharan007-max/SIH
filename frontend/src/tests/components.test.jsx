@@ -58,13 +58,11 @@ describe('Frontend Component Tests', () => {
   it('PlanningPipelineBanner renders 4 pipeline stages and decision-support text', () => {
     render(<PlanningPipelineBanner />);
 
-    expect(screen.getByText('Maintenance Data')).toBeInTheDocument();
-    expect(screen.getByText('Priority Engine')).toBeInTheDocument();
-    expect(screen.getByText('Constraint Optimizer')).toBeInTheDocument();
-    expect(screen.getByText('Proposed Block Plan')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Priority scoring identifies what matters most/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Maintenance Requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/Priority Engine/i)).toBeInTheDocument();
+    expect(screen.getByText(/Constraint Optimizer/i)).toBeInTheDocument();
+    expect(screen.getByText(/Proposed Plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/Corridor Headway Verified/i)).toBeInTheDocument();
   });
 
   it('BlockDetailModal slide-over panel displays block duration, workload, and savings', () => {
@@ -107,9 +105,9 @@ describe('Frontend Component Tests', () => {
 
     expect(screen.getByText('BLOCK-004')).toBeInTheDocument();
     expect(screen.getByText('SEC-A-B')).toBeInTheDocument();
-    expect(screen.getByText('120 min')).toBeInTheDocument(); // Duration
+    expect(screen.getAllByText(/120 min/).length).toBeGreaterThan(0); // Duration
     expect(screen.getByText('270 min')).toBeInTheDocument(); // Workload (120+90+60)
-    expect(screen.getByText('150 min')).toBeInTheDocument(); // Savings (270-120)
+    expect(screen.getAllByText('+150 min').length).toBeGreaterThan(0); // Savings (270-120)
     expect(screen.getByText('JOB-ENG-01')).toBeInTheDocument();
     expect(screen.getByText('JOB-TRD-01')).toBeInTheDocument();
     expect(screen.getByText('JOB-SNT-01')).toBeInTheDocument();

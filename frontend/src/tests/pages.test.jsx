@@ -225,7 +225,7 @@ describe('All 5 Frontend Pages Rendering & Integration Tests', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Network Operations')).toBeInTheDocument();
+      expect(screen.getByText(/Network Operations/i)).toBeInTheDocument();
       expect(screen.getAllByText('Maintenance Jobs').length).toBeGreaterThan(0);
       expect(screen.getByText('Critical Jobs')).toBeInTheDocument();
       expect(screen.getAllByText('Block Time').length).toBeGreaterThan(0);
@@ -276,8 +276,8 @@ describe('All 5 Frontend Pages Rendering & Integration Tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Railway Network Topology')).toBeInTheDocument();
-      expect(screen.getByText('Schematic View')).toBeInTheDocument();
-      expect(screen.getByText('Logical Graph Tree')).toBeInTheDocument();
+      expect(screen.getByText('Schematic Network Topology')).toBeInTheDocument();
+      expect(screen.getByText('Double Track')).toBeInTheDocument();
       expect(screen.getByText('Installed Railway Assets')).toBeInTheDocument();
     });
   });
@@ -291,10 +291,10 @@ describe('All 5 Frontend Pages Rendering & Integration Tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Plan Comparison')).toBeInTheDocument();
-      expect(screen.getByText('Old Plan')).toBeInTheDocument();
-      expect(screen.getByText('New Plan')).toBeInTheDocument();
-      expect(screen.getByText('Jobs unchanged')).toBeInTheDocument();
-      expect(screen.getByText('Jobs moved')).toBeInTheDocument();
+      expect(screen.getByText('Base Plan')).toBeInTheDocument();
+      expect(screen.getByText('Revised Plan')).toBeInTheDocument();
+      expect(screen.getByText('Unchanged')).toBeInTheDocument();
+      expect(screen.getByText('Rescheduled')).toBeInTheDocument();
       expect(screen.getByText('UNCHANGED')).toBeInTheDocument();
     });
   });
